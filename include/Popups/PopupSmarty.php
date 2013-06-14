@@ -412,7 +412,7 @@ class PopupSmarty extends ListViewSmarty{
                 $request_data['field_to_name'] = get_object_vars($request_data['field_to_name_array']);
                 if (is_array($request_data['field_to_name']))
                 {
-                    foreach ($request_data['field_to_name'] as $add_field)
+                    foreach ($request_data['field_to_name'] as $add_field => $html_elem_name)
                     {
                         $add_field = strtolower($add_field);
                         if ($add_field != 'id' && !isset($this->filter_fields[$add_field]) && isset($this->seed->field_defs[$add_field]))
