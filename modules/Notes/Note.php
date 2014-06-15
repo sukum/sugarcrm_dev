@@ -150,16 +150,7 @@ class Note extends SugarBean {
 			}
 			$removeFile = "upload://{$this->id}";
 		}
-		if(!empty($this->doc_type) && !empty($this->doc_id)){
-            $document = ExternalAPIFactory::loadAPI($this->doc_type);
 
-	      	$response = $document->deleteDoc($this);
-            $this->doc_type = '';
-            $this->doc_id = '';
-            $this->doc_url = '';
-            $this->filename = '';
-            $this->file_mime_type = '';
-		}
 		if(file_exists($removeFile)) {
 			if(!unlink($removeFile)) {
 				$GLOBALS['log']->error("*** Could not unlink() file: [ {$removeFile} ]");
@@ -174,7 +165,6 @@ class Note extends SugarBean {
 			$this->filename = '';
 			$this->file_mime_type = '';
 			$this->file = '';
-			$this->doc_id = '';
 			$this->save();
 			return true;
 		}
@@ -208,10 +198,11 @@ class Note extends SugarBean {
         else
 			$query .= "where ".$where_auto;
 
-        if($order_by != "")
-			$query .=  " ORDER BY ". $this->process_order_by($order_by, null);
-        else
-			$query .= " ORDER BY notes.name";
+        $order_by = $this->process_order_by($order_by);
+        if (empty($order_by)) {
+            $order_by = 'notes.name';
+        }
+        $query .= ' ORDER BY ' . $order_by;
 
 		return $query;
 	}
@@ -310,6 +301,7 @@ class Note extends SugarBean {
 	function bean_implements($interface) {
 		switch($interface) {
 			case 'ACL':return true;
+            case 'FILE' : return true;
 		}
 		return false;
 	}

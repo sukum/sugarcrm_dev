@@ -149,6 +149,8 @@ class Email extends SugarBean {
      */
     public $modifiedFieldDefs = array();
 
+    public $attachment_image;
+
 	/**
 	 * sole constructor
 	 */
@@ -669,7 +671,7 @@ class Email extends SugarBean {
 				$file = str_replace("\\", "", $file);
 				if(!empty($file)) {
 					//$fileLocation = $this->et->userCacheDir."/{$file}";
-					$fileGUID = substr($file, 0, 36);
+					$fileGUID = preg_replace('/[^a-z0-9\-]/', "", substr($file, 0, 36));
 					$fileLocation = $this->et->userCacheDir."/{$fileGUID}";
 					$filename = substr($file, 36, strlen($file)); // strip GUID	for PHPMailer class to name outbound file
 
@@ -710,7 +712,8 @@ class Email extends SugarBean {
 					$docRev->retrieve($doc->document_revision_id);
 
 					$filename = $docRev->filename;
-					$fileLocation = "upload://{$docRev->id}";
+					$docGUID = preg_replace('/[^a-z0-9\-]/', "", $docRev->id);
+					$fileLocation = "upload://{$docGUID}";
 					$mime_type = $docRev->file_mime_type;
 					$mail->AddAttachment($fileLocation,$locale->translateCharsetMIME(trim($filename), 'UTF-8', $OBCharset), 'base64', $mime_type);
 
@@ -746,7 +749,8 @@ class Email extends SugarBean {
 					$note->retrieve($noteId);
 					if (!empty($note->id)) {
 						$filename = $note->filename;
-						$fileLocation = "upload://{$note->id}";
+						$noteGUID = preg_replace('/[^a-z0-9\-]/', "", $note->id);
+						$fileLocation = "upload://{$noteGUID}";
 						$mime_type = $note->file_mime_type;
 						if (!$note->embed_flag) {
 							$mail->AddAttachment($fileLocation,$filename, 'base64', $mime_type);
@@ -760,7 +764,7 @@ class Email extends SugarBean {
 						} // if
 					} else {
 						//$fileLocation = $this->et->userCacheDir."/{$file}";
-						$fileGUID = substr($noteId, 0, 36);
+						$fileGUID = preg_replace('/[^a-z0-9\-]/', "", substr($noteId, 0, 36));
 						$fileLocation = $this->et->userCacheDir."/{$fileGUID}";
 						//$fileLocation = $this->et->userCacheDir."/{$noteId}";
 						$filename = substr($noteId, 36, strlen($noteId)); // strip GUID	for PHPMailer class to name outbound file
@@ -1051,13 +1055,6 @@ class Email extends SugarBean {
                  if (!empty($date_sent_obj) && ($date_sent_obj instanceof SugarDateTime)) {
  				    $this->date_sent = $date_sent_obj->asDb();
                  }
-			} else {
-				//set date_entered to date_sent if this is a new email being archived
-				//that way emails archived to sugar by plugins like opacus mail will
-				//have the correct ordering according to email incoming date.
-				if ($this->new_with_id) {
-					$this->date_entered = $this->date_sent;
-				}
 			}
 
 			parent::save($check_notify);
@@ -1308,10 +1305,16 @@ class Email extends SugarBean {
 		if(empty($id))
 			$id = $this->id;
 
+        $id = $this->db->quote($id);
+
 		$q  = "UPDATE emails SET deleted = 1 WHERE id = '{$id}'";
 		$qt = "UPDATE emails_text SET deleted = 1 WHERE email_id = '{$id}'";
-		$r  = $this->db->query($q);
-		$rt = $this->db->query($qt);
+		$qf = "UPDATE folders_rel SET deleted = 1 WHERE polymorphic_id = '{$id}' AND polymorphic_module = 'Emails'";
+        $qn = "UPDATE notes SET deleted = 1 WHERE parent_id = '{$id}' AND parent_type = 'Emails'";
+        $this->db->query($q);
+        $this->db->query($qt);
+        $this->db->query($qf);
+        $this->db->query($qn);
 	}
 
 	/**
@@ -2292,11 +2295,19 @@ class Email extends SugarBean {
 		$result =$this->db->query($query,true," Error filling in additional list fields: ");
 
 		$row = $this->db->fetchByAssoc($result);
-        $this->attachment_image = ($row !=null) ? SugarThemeRegistry::current()->getImage('attachment',"","","") : "";
 
-		if ($row !=null) {
-			$this->attachment_image = SugarThemeRegistry::current()->getImage('attachment',"","","",'.gif',translate('LBL_ATTACHMENT', 'Emails'));
-		}
+        if ($row) {
+            $this->attachment_image = SugarThemeRegistry::current()->getImage(
+                'attachment',
+                '',
+                null,
+                null,
+                '.gif',
+                translate('LBL_ATTACHMENT', 'Emails')
+            );
+        } else {
+            $this->attachment_image = '';
+        }
 
 		///////////////////////////////////////////////////////////////////////
 		if(empty($this->contact_id) && !empty($this->parent_id) && !empty($this->parent_type) && $this->parent_type === 'Contacts' && !empty($this->parent_name) ){

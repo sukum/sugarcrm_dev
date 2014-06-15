@@ -411,6 +411,7 @@ class MBModule
 
     function build ($basepath)
     {
+        global $app_list_strings;
         $path = $basepath . '/modules/' . $this->key_name ;
         if (mkdir_recursive ( $path ))
         {
@@ -421,6 +422,7 @@ class MBModule
             $this->copyMetaRecursive ( $this->path . '/metadata/', $path . '/metadata/', true ) ;
             $this->copyMetaRecursive ( $this->path . '/Dashlets/' . $this->key_name . 'Dashlet/',
             						   $path . '/Dashlets/' . $this->key_name . 'Dashlet/', true ) ;
+            $app_list_strings['moduleList'][$this->key_name] = $this->mblanguage->label;
             $this->relationships->build ( $basepath ) ;
             $this->mblanguage->build ( $path ) ;
         }
@@ -855,8 +857,33 @@ class MBModule
                 }
             }
         }
-
+        
         return $field_defs;
+    }
+
+    /**
+     * Returns a TemplateField object by name
+     * Returns a TemplateField object by name or null if field not exists. If type not set use text type as default
+     *
+     * @param string $name
+     * @return TemplateField|null
+     *
+     */
+    public function getField($name)
+    {
+        $field = null;
+        $varDefs = $this->getVardefs();
+        if (isset($varDefs['fields'][$name])){
+            $fieldVarDefs = $varDefs['fields'][$name];
+            if (!isset($fieldVarDefs['type'])){
+                $fieldVarDefs['type'] = 'varchar';
+            }
+            $field = get_widget($fieldVarDefs['type']);
+            foreach($fieldVarDefs AS $key => $opt){
+                $field->$key = $opt;
+            }
+        }
+        return $field;
     }
 
 }

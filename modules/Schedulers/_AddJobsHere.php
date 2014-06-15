@@ -65,6 +65,8 @@ $job_strings = array (
 	/*4 => 'securityAudit()',*/
     12 => 'sendEmailReminders',
     14 => 'cleanJobQueue',
+    15 => 'removeDocumentsFromFS',
+    16 => 'trimSugarFeeds',
 
 );
 
@@ -284,8 +286,8 @@ function pruneDatabase() {
 
 	$db = DBManagerFactory::getInstance();
 	$tables = $db->getTablesArray();
+    $queryString = array();
 
-//_ppd($tables);
 	if(!empty($tables)) {
 		foreach($tables as $kTable => $table) {
 			// find tables with deleted=1
@@ -303,7 +305,7 @@ function pruneDatabase() {
 
 			$qDel = "SELECT * FROM $table WHERE deleted = 1";
 			$rDel = $db->query($qDel);
-			$queryString = array();
+
 			// make a backup INSERT query if we are deleting.
 			while($aDel = $db->fetchByAssoc($rDel, false)) {
 				// build column names
@@ -413,6 +415,91 @@ function sendEmailReminders(){
 	require_once("modules/Activities/EmailReminder.php");
 	$reminder = new EmailReminder();
 	return $reminder->process();
+}
+
+function removeDocumentsFromFS()
+{
+    $GLOBALS['log']->info('Starting removal of documents if they are not present in DB');
+
+    /**
+     * @var DBManager $db
+     * @var SugarBean $bean
+     */
+    global $db;
+
+    // temp table to store id of files without memory leak
+    $tableName = 'cron_remove_documents';
+
+    $resource = $db->limitQuery("SELECT * FROM cron_remove_documents WHERE 1=1 ORDER BY date_modified ASC", 0, 100);
+    $return = true;
+    while ($row = $db->fetchByAssoc($resource)) {
+        $bean = BeanFactory::getBean($row['module']);
+        $bean->retrieve($row['bean_id'], true, false);
+        if (empty($bean->id)) {
+            $isSuccess = true;
+            $bean->id = $row['bean_id'];
+            $directory = $bean->deleteFileDirectory();
+            if (!empty($directory) && is_dir('upload://deleted/' . $directory)) {
+                if ($isSuccess = rmdir_recursive('upload://deleted/' . $directory)) {
+                    $directory = explode('/', $directory);
+                    while (!empty($directory)) {
+                        $path = 'upload://deleted/' . implode('/', $directory);
+                        if (is_dir($path)) {
+                            $directoryIterator = new DirectoryIterator($path);
+                            $empty = true;
+                            foreach ($directoryIterator as $item) {
+                                if ($item->getFilename() == '.' || $item->getFilename() == '..') {
+                                    continue;
+                                }
+                                $empty = false;
+                                break;
+                            }
+                            if ($empty) {
+                                rmdir($path);
+                            }
+                        }
+                        array_pop($directory);
+                    }
+                }
+            }
+            if ($isSuccess) {
+                $db->query('DELETE FROM ' . $tableName . ' WHERE id=' . $db->quoted($row['id']));
+            } else {
+                $return = false;
+            }
+        } else {
+            $db->query('UPDATE ' . $tableName . ' SET date_modified=' . $db->convert($db->quoted(TimeDate::getInstance()->nowDb()), 'datetime') . ' WHERE id=' . $db->quoted($row['id']));
+        }
+    }
+
+    return $return;
+}
+
+
+/**
++ * Job 16
++ * this will trim all records in sugarfeeds table that are older than 30 days or specified interval
++ */
+
+function trimSugarFeeds()
+{
+    global $sugar_config, $timedate;
+    $GLOBALS['log']->info('----->Scheduler fired job of type trimSugarFeeds()');
+    $db = DBManagerFactory::getInstance();
+
+    //get the pruning interval from globals if it's specified
+    $prune_interval = !empty($GLOBALS['sugar_config']['sugarfeed_prune_interval']) && is_numeric($GLOBALS['sugar_config']['sugarfeed_prune_interval']) ? $GLOBALS['sugar_config']['sugarfeed_prune_interval'] : 30;
+
+
+    //create and run the query to delete the records
+    $timeStamp = $db->convert("'". $timedate->asDb($timedate->getNow()->get("-".$prune_interval." days")) ."'" ,"datetime");
+    $query = "DELETE FROM sugarfeed WHERE date_modified < $timeStamp";
+
+
+    $GLOBALS['log']->info("----->Scheduler is about to trim the sugarfeed table by running the query $query");
+    $db->query($query);
+
+    return true;
 }
 
 

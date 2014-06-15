@@ -290,21 +290,29 @@ class UploadFile
 	function getMime($_FILES_element)
 	{
 		$filename = $_FILES_element['name'];
+        $filetype = isset($_FILES_element['type']) ? $_FILES_element['type'] : null;
         $file_ext = pathinfo($filename, PATHINFO_EXTENSION);
 
-        //If no file extension is available and the mime is octet-stream try to determine the mime type.
-        $recheckMime = empty($file_ext) && !empty($_FILES_element['type']) && ($_FILES_element['type']  == 'application/octet-stream');
+        $is_image = strpos($filetype, 'image/') === 0;
+        // if it's an image, or no file extension is available and the mime is octet-stream
+        // try to determine the mime type
+        $recheckMime = $is_image || (empty($file_ext) && $filetype == 'application/octet-stream');
 
-		if (!empty($_FILES_element['type']) && !$recheckMime) {
-			$mime = $_FILES_element['type'];
+        $mime = 'application/octet-stream';
+        if ($filetype && !$recheckMime) {
+            $mime = $filetype;
 		} elseif( function_exists( 'mime_content_type' ) ) {
 			$mime = mime_content_type( $_FILES_element['tmp_name'] );
-		} elseif( function_exists( 'ext2mime' ) ) {
-			$mime = ext2mime( $_FILES_element['name'] );
-		} else {
-			$mime = 'application/octet-stream';
-		}
-		return $mime;
+        } elseif ($is_image) {
+            $info = getimagesize($_FILES_element['tmp_name']);
+            if ($info) {
+                $mime = $info['mime'];
+            }
+        } elseif (function_exists('ext2mime')) {
+            $mime = ext2mime($filename);
+        }
+
+        return $mime;
 	}
 
 	/**
@@ -656,7 +664,6 @@ class UploadStream
     	$path = substr($path, strlen(self::STREAM_NAME)+3); // cut off upload://
     	$path = str_replace("\\", "/", $path); // canonicalize path
     	if($path == ".." || substr($path, 0, 3) == "../" || substr($path, -3, 3) == "/.." || strstr($path, "/../")) {
-    		$GLOBALS['log']->fatal("Invalid uploaded file name supplied: $path");
     		return null;
     	}
         return self::getDir()."/".$path;

@@ -240,6 +240,7 @@ function get_sugar_config_defaults() {
 	$sugar_config_defaults = array (
 	'admin_export_only' => false,
 	'export_delimiter' => ',',
+	'export_excel_compatible' => false,
 	'cache_dir' => 'cache/',
 	'calculate_response_time' => true,
 	'create_default_user' => false,
@@ -604,6 +605,7 @@ function get_user_name($id) {
  *
  * This is a helper function to return an Array of users depending on the parameters passed into the function.
  * This function uses the get_register_value function by default to use a caching layer where supported.
+ * This function has been updated return the array sorted by user preference of name display (bug 62712)
  *
  * @param bool $add_blank Boolean value to add a blank entry to the array results, true by default
  * @param string $status String value indicating the status to filter users by, "Active" by default
@@ -615,8 +617,7 @@ function get_user_name($id) {
  * @return array Array of users matching the filter criteria that may be from cache (if similar search was previously run)
  */
 function get_user_array($add_blank=true, $status="Active", $user_id='', $use_real_name=false, $user_name_filter='', $portal_filter=' AND portal_only=0 ', $from_cache = true) {
-	global $locale;
-	global $sugar_config;
+	global $locale, $sugar_config, $current_user;
 
 	if(empty($locale)) {
 		$locale = new Localization();
@@ -645,7 +646,28 @@ function get_user_array($add_blank=true, $status="Active", $user_id='', $use_rea
 		if (!empty($user_id)) {
 			$query .= " OR id='{$user_id}'";
 		}
-		$query = $query.' ORDER BY user_name ASC';
+
+        //get the user preference for name formatting, to be used in order by
+        $order_by_string =' user_name ASC ';
+        if(!empty($current_user) && !empty($current_user->id))
+        {
+            $formatString = $current_user->getPreference('default_locale_name_format');
+
+            //create the order by string based on position of first and last name in format string
+            $order_by_string =' user_name ASC ';
+            $firstNamePos = strpos( $formatString, 'f');
+            $lastNamePos = strpos( $formatString, 'l');
+            if($firstNamePos !== false || $lastNamePos !== false){
+                //its possible for first name to be skipped, check for this
+                if($firstNamePos===false){
+                    $order_by_string =  'last_name ASC';
+                }else{
+                    $order_by_string =  ($lastNamePos < $firstNamePos) ? "last_name, first_name ASC" : "first_name, last_name ASC";
+                }
+            }
+        }
+
+		$query = $query.' ORDER BY '.$order_by_string;
 		$GLOBALS['log']->debug("get_user_array query: $query");
 		$result = $db->query($query, true, "Error filling in user array: ");
 
@@ -2411,27 +2433,79 @@ function get_emails_by_assign_or_link($params)
     $rel_join = str_replace("{$bean->table_name}.id", "'{$bean->id}'", $rel_join);
     $return_array['select']='SELECT DISTINCT emails.id ';
     $return_array['from'] = "FROM emails ";
-    $return_array['join'] = " INNER JOIN (".
-        // directly assigned emails
-        	"select eb.email_id, 'direct' source FROM emails_beans eb where eb.bean_module = '{$bean->module_dir}' AND eb.bean_id = '{$bean->id}' AND eb.deleted=0 ".
-            " UNION ".
+
+    $return_array['join'] = array();
+
+    // directly assigned emails
+    $return_array['join'][] = "
+        SELECT
+            eb.email_id,
+            'direct' source
+        FROM
+            emails_beans eb
+        WHERE
+            eb.bean_module = '{$bean->module_dir}'
+            AND eb.bean_id = '{$bean->id}'
+            AND eb.deleted=0
+    ";
+
+    // Related by directly by email
+    $return_array['join'][] = "
+        SELECT DISTINCT
+            eear.email_id,
+            'relate' source
+        FROM
+            emails_email_addr_rel eear
+        INNER JOIN
+            email_addr_bean_rel eabr
+        ON
+            eabr.bean_id ='{$bean->id}'
+            AND eabr.bean_module = '{$bean->module_dir}'
+            AND eabr.email_address_id = eear.email_address_id
+            AND eabr.deleted=0
+        WHERE
+            eear.deleted=0
+    ";
+
+    $showEmailsOfRelatedContacts = empty($bean->field_defs[$relation]['hide_history_contacts_emails']);
+    if (!empty($GLOBALS['sugar_config']['hide_history_contacts_emails']) && isset($GLOBALS['sugar_config']['hide_history_contacts_emails'][$bean->module_name])) {
+        $showEmailsOfRelatedContacts = empty($GLOBALS['sugar_config']['hide_history_contacts_emails'][$bean->module_name]);
+    }
+    if ($showEmailsOfRelatedContacts) {
         // Assigned to contacts
-        	"select DISTINCT eb.email_id, 'contact' source FROM emails_beans eb
-                $rel_join AND link_bean.id = eb.bean_id
-        		where eb.bean_module = '$rel_module' AND eb.deleted=0".
-        	" UNION ".
-        // Related by directly by email
-            "select DISTINCT eear.email_id, 'relate' source  from emails_email_addr_rel eear INNER JOIN email_addr_bean_rel eabr
-            	ON eabr.bean_id ='{$bean->id}' AND eabr.bean_module = '{$bean->module_dir}' AND
-    			eabr.email_address_id = eear.email_address_id and eabr.deleted=0 where eear.deleted=0".
-            " UNION ".
+        $return_array['join'][] = "
+            SELECT DISTINCT
+                eb.email_id,
+                'contact' source
+            FROM
+                emails_beans eb
+            $rel_join AND link_bean.id = eb.bean_id
+            WHERE
+                eb.bean_module = '$rel_module'
+                AND eb.deleted=0
+        ";
         // Related by email to linked contact
-            "select DISTINCT eear.email_id, 'relate_contact' source FROM emails_email_addr_rel eear INNER JOIN email_addr_bean_rel eabr
-            	ON eabr.email_address_id=eear.email_address_id AND eabr.bean_module = '$rel_module' AND eabr.deleted=0
-            	$rel_join AND link_bean.id = eabr.bean_id
-            	where eear.deleted=0".
-            ") email_ids ON emails.id=email_ids.email_id ";
-        $return_array['where']=" WHERE emails.deleted=0 ";
+        $return_array['join'][] = "
+            SELECT DISTINCT
+                eear.email_id,
+                'relate_contact' source
+            FROM
+                emails_email_addr_rel eear
+            INNER JOIN
+                email_addr_bean_rel eabr
+            ON
+                eabr.email_address_id=eear.email_address_id
+                AND eabr.bean_module = '$rel_module'
+                AND eabr.deleted=0
+            $rel_join AND link_bean.id = eabr.bean_id
+            WHERE
+                eear.deleted=0
+        ";
+    }
+
+    $return_array['join'] = " INNER JOIN (" . implode(" UNION ", $return_array['join']). ") email_ids ON emails.id=email_ids.email_id ";
+
+    $return_array['where']=" WHERE emails.deleted=0 ";
 
     	//$return_array['join'] = '';
         $return_array['join_tables'][0] = '';
@@ -2748,12 +2822,12 @@ function check_php_version($sys_php_version = '') {
 	// versions below $min_considered_php_version considered invalid by default,
 	// versions equal to or above this ver will be considered depending
 	// on the rules that follow
-	$min_considered_php_version = '5.2.1';
+	$min_considered_php_version = '5.2.2';
 
 	// only the supported versions,
 	// should be mutually exclusive with $invalid_php_versions
 	$supported_php_versions = array (
-    	'5.2.1', '5.2.2', '5.2.3', '5.2.4', '5.2.5', '5.2.6', '5.2.8', '5.3.0'
+    	'5.2.2', '5.2.3', '5.2.4', '5.2.5', '5.2.6', '5.2.8', '5.3.0'
 	);
 
 	// invalid versions above the $min_considered_php_version,

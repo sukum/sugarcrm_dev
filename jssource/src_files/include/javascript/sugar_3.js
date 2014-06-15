@@ -153,7 +153,7 @@ function isSupportedIE() {
 
 	// IE Check supports ActiveX controls
 	if (userAgent.indexOf("msie") != -1 && userAgent.indexOf("mac") == -1 && userAgent.indexOf("opera") == -1) {
-		var version = navigator.appVersion.match(/MSIE (.\..)/)[1] ;
+		var version = navigator.appVersion.match(/MSIE (\d+\.\d+)/)[1] ;
 		if(version >= 5.5 && version < 10) {
 			return true;
 		} else {
@@ -184,10 +184,10 @@ function checkMaxSupported(c, s) {
 
 SUGAR.isSupportedBrowser = function(){
     var supportedBrowsers = {
-        msie : {min:8, max:10}, // IE 8, 9, 10
+        msie : {min:9, max:10}, // IE 9, 10
         safari : {min:534}, // Safari 5.1
-        mozilla : {min:20.0}, // Firefox 20.0
-        chrome : {min:537.31} // Chrome 26
+        mozilla : {min:23.0}, // Firefox 23.0
+        chrome : {min:29} // Chrome 29
     };
     var current = String($.browser.version);
     var supported;
@@ -200,6 +200,7 @@ SUGAR.isSupportedBrowser = function(){
     else {
         $.browser.chrome = /chrome/.test(navigator.userAgent.toLowerCase());
         if($.browser.chrome){ // Chrome
+            current = navigator.userAgent.match(/Chrome\/(.*?) /)[1];
             supported = supportedBrowsers['chrome'];
         }
         else if($.browser.safari){ // Safari
@@ -553,20 +554,23 @@ function getDateObject(dtStr) {
 	var mh = dt[date_reg_positions['m']];
 	var dy = dt[date_reg_positions['d']];
     var dtar = dtStr.split(' ');
+    var date1;
     if(typeof(dtar[1])!='undefined' && isTime(dtar[1])) {//if it is a timedate, we should make date1 to have time value
         var t1 = dtar[1].replace(/am/i,' AM');
         var t1 = t1.replace(/pm/i,' PM');
         //bug #37977: where time format 23.00 causes java script error
         t1=t1.replace(/\./, ':');
-        date1 = new Date(Date.parse(mh+'/'+dy+ '/'+yr+' '+t1));
+        date1 = new Date(mh+'/'+dy+'/'+yr+' '+t1);
     }
     else
     {
-        var date1 = new Date();
-        date1.setFullYear(yr); // xxxx 4 char year
-        date1.setMonth(mh-1); // 0-11 Bug 4048: javascript Date obj months are 0-index
-        date1.setDate(dy); // 1-31
+        date1 = new Date(mh+'/'+dy+'/'+yr);
     }
+
+    if (isNaN(date1.valueOf())) {
+        return null;
+    }
+
 	return date1;
 }
 
@@ -919,6 +923,7 @@ function validate_form(formname, startsWith){
 			if(validate[formname][i][nameIndex].indexOf(startsWith) == 0){
 				if(typeof form[validate[formname][i][nameIndex]]  != 'undefined' && typeof form[validate[formname][i][nameIndex]].value != 'undefined'){
 					var bail = false;
+
 
                     //If a field is not required and it is blank or is binarydependant, skip validation.
                     //Example of binary dependant fields would be the hour/min/meridian dropdowns in a date time combo widget, which require further processing than a blank check
@@ -1436,7 +1441,7 @@ function getXMLHTTPinstance() {
 
 	// IE Check supports ActiveX controls
 	if (userAgent.indexOf("msie") != -1 && userAgent.indexOf("mac") == -1 && userAgent.indexOf("opera") == -1) {
-		var version = navigator.appVersion.match(/MSIE (.\..)/)[1] ;
+		var version = navigator.appVersion.match(/MSIE (\d+\.\d+)/)[1] ;
 		if(version >= 5.5 ) {
 			try {
 				xmlhttp = new ActiveXObject("Msxml2.XMLHTTP");
@@ -3675,8 +3680,17 @@ SUGAR.savedViews = function() {
 			SUGAR.tabChooser.movementCallback(document.getElementById('display_tabs_td').getElementsByTagName('select')[0]);
 
 			// This check is needed for the Activities module (Calls/Meetings/Tasks).
-			if (document.search_form.orderBy)
-				document.search_form.orderBy.options.value = SUGAR.savedViews.selectedOrderBy;
+            if (document.search_form.orderBy)
+            {
+                if (document.search_form.orderBy.length > 1 && document.search_form.orderBy[1].type == 'select-one')
+                {
+                    document.search_form.orderBy[1].options.value = SUGAR.savedViews.selectedOrderBy;
+                }
+                else
+                {
+                    document.search_form.orderBy.options.value = SUGAR.savedViews.selectedOrderBy;
+                }
+            }
 
 			// handle direction
 			if(SUGAR.savedViews.selectedSortOrder == 'DESC') document.getElementById('sort_order_desc_radio').checked = true;
@@ -3747,6 +3761,11 @@ SUGAR.searchForm = function() {
                          }
                      }
                  }
+                // Remove the previously selected div, so that only data from current div to be sent as form data to the server-side
+                if (document.getElementById(module + thepreviousView + '_search' + 'SearchForm'))
+                {
+                    document.getElementById(module + thepreviousView + '_search' + 'SearchForm').innerHTML = '';
+                }
 			}
 
 			// if tab is not cached
@@ -3866,8 +3885,21 @@ SUGAR.searchForm = function() {
                 }
             }
 
+            SUGAR.searchForm.clearBasicSearchOrderToDefault(form);
 			SUGAR.savedViews.clearColumns = true;
-		}
+		},
+        // This function sets sorting to default Sugar values after BasicSearch Clear button is pressed
+        clearBasicSearchOrderToDefault: function(form)
+        {
+            if(form.elements['searchFormTab']){
+                var formType = form.elements['searchFormTab'].value;
+                if (formType == 'basic_search')
+                {
+                    form.elements['orderBy'].value = 'DATE_ENTERED';
+                    form.elements['sortOrder'].value = 'DESC';
+                }
+            }
+        }
 	};
 }();
 // Code for the column/tab chooser used on homepage and in admin section
@@ -4875,11 +4907,13 @@ setEmailPasswordDisplay: function(id, exists, formName) {
 	pwd = document.getElementById(id);
 	if(!pwd || !link) return;
 	if(exists) {
+            pwd.disabled = true;
     	pwd.style.display = 'none';
     	link.style.display = '';
         if(typeof(formName) != 'undefined')
             removeFromValidate(formName, id);
 	} else {
+            pwd.disabled = false;
     	pwd.style.display = '';
     	link.style.display = 'none';
 	}
@@ -4889,6 +4923,7 @@ setEmailPasswordEdit: function(id) {
 	link = document.getElementById(id+'_link');
 	pwd = document.getElementById(id);
 	if(!pwd || !link) return;
+        pwd.disabled = false;
 	pwd.style.display = '';
 	link.style.display = 'none';
 },

@@ -671,6 +671,9 @@ require_once('include/EditView/EditView2.php');
 
                          $field = $real_field;
                          unset($this->searchFields[$end_field]['value']);
+                     }else{
+                         //if both start and end ranges have not been defined, skip this filter.
+                        continue;
                      }
                  } else if (preg_match('/^range_(.*?)$/', $field, $match) && isset($this->searchFields[$field]['value'])) {
                      $real_field = $match[1];
@@ -1004,7 +1007,12 @@ require_once('include/EditView/EditView2.php');
                                  }else{
                                      //Bug#37087: Re-write our sub-query to it is executed first and contents stored in a derived table to avoid mysql executing the query
                                      //outside in. Additional details: http://bugs.mysql.com/bug.php?id=9021
-                                    $where .= "{$db_field} $in (select * from ({$parms['subquery']} ".$this->seed->db->quoted($field_value.'%').") {$field}_derived)";
+                                     $selectCol = ' * ';
+                                     //use the select column in the subquery if it exists
+                                     if(!empty($parms['subquery'])){
+                                         $selectCol = $this->getSelectCol($parms['subquery']);
+                                     }
+                                    $where .= "{$db_field} $in (select $selectCol from ({$parms['subquery']} ".$this->seed->db->quoted($field_value.'%').") {$field}_derived)";
                                  }
 
                                  break;
@@ -1236,4 +1244,38 @@ require_once('include/EditView/EditView2.php');
 
          return array('searchdefs' => $searchdefs, 'searchFields' => $searchFields );
      }
+
+    /**
+      * this function will take the subquery string and return the columns to be used in the select of the derived table
+      *
+      * @param string $subquery the subquery string to parse through
+      * @return string the retrieved column list
+      */
+    protected function getSelectCol($subquery)
+    {
+        $selectCol = '';
+
+        if (empty($subquery)) {
+            return $selectCol;
+        }
+        $subquery = strtolower($subquery);
+        //grab the values between the select and from
+        $select = stripos($subquery, 'select');
+        $from = stripos($subquery, 'from');
+        if ($select !==false && $from!==false && $select+6 < $from) {
+            $selectCol = substr($subquery, $select+6, $from-$select-6);
+        }
+        //remove table names if they exist
+        $columns = explode(',', $selectCol);
+        $i = 0;
+        foreach ($columns as $column) {
+            $dot = strpos($column, '.');
+            if ($dot > 0) {
+                $columns[$i] = substr($column, $dot+1);
+            }
+            $i++;
+        }
+        $selectCol = implode(',', $columns);
+        return $selectCol;
+    }
  }

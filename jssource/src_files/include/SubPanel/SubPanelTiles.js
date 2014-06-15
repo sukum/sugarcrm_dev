@@ -116,7 +116,7 @@ function sub_p_del(sp,submod,subrec, rp){
 	remove_url = "index.php?module="+ submod
 			+ "&action=delete"
 			+ "&record="+ subrec
-			+ "&return_url=" + escape(escape(return_url))
+			+ "&return_url=" + escape(return_url)
 			+ "&refresh_page=" + rp;//$refresh_page"
 	showSubPanel(sp,remove_url,true);
 }
@@ -417,6 +417,10 @@ SUGAR.subpanelUtils = function() {
          *          associated subpanel name by climbing the DOM from this point
          */
 		inlineSave: function(theForm, buttonName) {
+			var saveButton = document.getElementsByName(buttonName);
+			for (var i = 0; i < saveButton.length; i++) {
+			    saveButton[i].disabled = true;
+			}
 			ajaxStatus.showStatus(SUGAR.language.get('app_strings', 'LBL_SAVING'));
 			var success = function(data) {
                 var module = get_module_name();
@@ -428,6 +432,9 @@ SUGAR.subpanelUtils = function() {
                 }
                 if (typeof(result) != 'undefined' && result != null && result['status'] == 'dupe') {
                     document.location.href = "index.php?" + result['get'].replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&#039;/gi,'\'').replace(/&quot;/gi,'"').replace(/\r\n/gi,'\n');
+                    for (var i = 0; i < saveButton.length; i++) {
+                        saveButton[i].disabled = false;
+                    }
                     return;
                 } else {
                     SUGAR.subpanelUtils.cancelCreate(buttonName);
@@ -453,6 +460,9 @@ SUGAR.subpanelUtils = function() {
                     }
                     ajaxStatus.showStatus(SUGAR.language.get('app_strings', 'LBL_SAVED'));
                     window.setTimeout('ajaxStatus.hideStatus()', 1000);
+                    for (var i = 0; i < saveButton.length; i++) {
+                        saveButton[i].disabled = false;
+                    }
                 }
 			}
 

@@ -90,7 +90,7 @@ function get_field_list($value, $translate=true){
 		} //foreach
 	} //if
 
-	if($value->module_dir == 'Bugs'){
+    if (isset($value->module_dir) && $value->module_dir == 'Bugs') {
 
 		$seedRelease = new Release();
 		$options = $seedRelease->get_releases(TRUE, "Active");
@@ -111,7 +111,7 @@ function get_field_list($value, $translate=true){
 			$list['release_name']['options'] = $options_ret;
 		}
 	}
-    if($value->module_dir == 'Emails'){
+    if (isset($value->module_dir) && $value->module_dir == 'Emails') {
         $fields = array('from_addr_name', 'reply_to_addr', 'to_addrs_names', 'cc_addrs_names', 'bcc_addrs_names');
         foreach($fields as $field){
             $var = $value->field_defs[$field];
@@ -905,30 +905,32 @@ function add_create_account($seed)
 			return;
 		}
 
-	    $arr = array();
+        // attempt to find by id first
+        $ret = $focus->retrieve($account_id, true, false);
 
-	    $query = "select {$focus->table_name}.id, {$focus->table_name}.deleted from {$focus->table_name} ";
-	    $query .= " WHERE name='".$seed->db->quote($account_name)."'";
-	    $query .=" ORDER BY deleted ASC";
-	    $result = $seed->db->query($query, true);
+        // if it doesn't exist by id, attempt to find by name (non-deleted)
+        if (empty($ret))
+        {
+            $query = "select {$focus->table_name}.id, {$focus->table_name}.deleted from {$focus->table_name} ";
+            $query .= " WHERE name='".$seed->db->quote($account_name)."'";
+            $query .=" ORDER BY deleted ASC";
+            $result = $seed->db->query($query, true);
 
-	    $row = $seed->db->fetchByAssoc($result, false);
+            $row = $seed->db->fetchByAssoc($result, false);
 
-		// we found a row with that id
-	    if (!empty($row['id']))
-	    {
-	    	// if it exists but was deleted, just remove it entirely
-	        if ( !empty($row['deleted']))
-	        {
-	            $query2 = "delete from {$focus->table_name} WHERE id='". $seed->db->quote($row['id'])."'";
-	            $result2 = $seed->db->query($query2, true);
-			}
-			// else just use this id to link the contact to the account
-	        else
-	        {
-	        	$focus->id = $row['id'];
-	        }
-	    }
+            if (!empty($row['id']))
+            {
+                $focus->retrieve($row['id']);
+            }
+        }
+        // if it exists by id but was deleted, just remove it entirely
+        else if ($focus->deleted)
+        {
+            $query2 = "delete from {$focus->table_name} WHERE id='". $seed->db->quote($focus->id) ."'";
+            $seed->db->query($query2, true);
+            // it was deleted, create new
+            $focus = BeanFactory::newBean('Accounts');
+        }
 
 		// if we didnt find the account, so create it
 	    if (empty($focus->id))

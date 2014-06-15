@@ -322,7 +322,7 @@ $vardefs= array (
     ),
 	'source'	=> 'non-db',
     'studio' => array('editField' => true, 'searchview' => false),
-    'full_text_search' => array('boost' => 3, 'index' => 'whitespace'), //bug 54567
+    'full_text_search' => array('boost' => 3, 'analyzer' => 'whitespace'), //bug 54567
 ), 
   
   'email_addresses_primary' => 
@@ -345,6 +345,17 @@ $vardefs= array (
         'reportable'=>false,
         'unified_search' => true,
         'rel_fields' => array('primary_address' => array('type'=>'bool')),
+    ),
+    // Used for non-primary mail import
+    'email_addresses_non_primary'=>
+    array(
+        'name' => 'email_addresses_non_primary',
+        'type' => 'email',
+        'source' => 'non-db',
+        'vname' =>'LBL_EMAIL_NON_PRIMARY',
+        'studio' => false,
+        'reportable'=>false,
+        'massupdate' => false,
     ),
 ),
 'relationships'=>array(

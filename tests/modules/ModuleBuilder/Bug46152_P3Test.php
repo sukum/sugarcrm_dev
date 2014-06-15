@@ -1,5 +1,4 @@
 <?php
-if(!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
 /*********************************************************************************
  * SugarCRM Community Edition is a customer relationship management program developed by
  * SugarCRM, Inc. Copyright (C) 2004-2013 SugarCRM Inc.
@@ -35,29 +34,75 @@ if(!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
  * "Powered by SugarCRM".
  ********************************************************************************/
 
-/**
- * Use this script to fetch linkedin js code.
- */
 
-$url = '';
-$type = !empty($_GET['type']) ? $_GET['type'] : '';
-switch ($type)
+
+require_once 'modules/DynamicFields/templates/Fields/TemplateRelatedTextField.php';
+require_once 'modules/ModuleBuilder/parsers/parser.label.php';
+
+class Bug46152_P3Test extends Sugar_PHPUnit_Framework_TestCase
 {
-    case 'linkedin' :
-        require_once('include/connectors/formatters/FormatterFactory.php');
-        $formatter = FormatterFactory::getInstance('ext_rest_linkedin');
-        $url = $formatter->getComponent()->getSource()->getConfig();
-        $url = $url['properties']['company_url'];
-        break;
+
+    private $dynamicField;
+    private $module = 'Notes';
+    private $relatedModule = 'Opportunities';
+    private $idLabelName;
+
+    /**
+     * Test saving Label of id field.
+     * 
+     * @group 46152
+     */
+    public function testSaveIdLabel()
+    {
+        $field = new TemplateRelatedTextFieldMockB46152_P3();
+        $field->ext2 = $this->relatedModule;
+        $field->label_value = 'TestField' . time();
+
+        $this->idLabelName = 'LBL_TEST_FIELD_ID_LABEL_B46152';
+
+        $field->saveIdLabel($this->idLabelName, $this->dynamicField);
+
+        SugarTestHelper::setUp('mod_strings', array($this->module));
+
+        $this->assertArrayHasKey($this->idLabelName, $GLOBALS['mod_strings']);
+
+    }
+
+
+    public function setUp()
+    {
+        SugarTestHelper::setUp('beanList');
+        SugarTestHelper::setUp('app_list_strings');
+        SugarTestHelper::setUp('mod_strings', array('ModuleBuilder'));
+        SugarTestHelper::setUp('current_user');
+
+        $this->dynamicField = new DynamicField($this->module);
+        $this->dynamicField->setup(BeanFactory::getBean($this->module));
+
+        parent::setUp();
+    }
+
+    public function tearDown()
+    {
+        ParserLabel::removeLabel(
+            $GLOBALS['current_language'],
+            $this->idLabelName,
+            $GLOBALS['mod_strings'][$this->idLabelName],
+            $this->module
+        );
+
+        SugarTestHelper::tearDown();
+        parent::tearDown();
+    }
+
+
 }
 
-if ($url == '')
+class TemplateRelatedTextFieldMockB46152_P3 extends TemplateRelatedTextField
 {
-    return;
-}
+    public function saveIdLabel($idLabelName, $df)
+    {
+        parent::saveIdLabel($idLabelName, $df);
+    }
 
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, $url);
-curl_setopt($ch, CURLOPT_TIMEOUT, '30');
-curl_exec($ch);
-curl_close($ch);
+}

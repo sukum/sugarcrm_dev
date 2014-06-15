@@ -220,6 +220,7 @@ class Scheduler extends SugarBean {
 		$today	= getdate($timedate->getNow()->ts);
 
 		// derive day part
+        $dayName = array();
 		if($days == '*') {
 			$GLOBALS['log']->debug('----->got * day');
 
@@ -267,6 +268,7 @@ class Scheduler extends SugarBean {
 			$startMon = $timedate->fromDb(date_time_start)->month;
 			$startFrom = ($startMon % $mult);
 
+            $compMons = array();
 			for($i=$startFrom;$i<=12;$i+$mult) {
 				$compMons[] = $i+$mult;
 				$i += $mult;
@@ -276,6 +278,7 @@ class Scheduler extends SugarBean {
 				return false;
 			}
 		} elseif($mons != '*') {
+            $monName = array();
 			if(strstr($mons,',')) { // we have particular (groups) of months
 				$exMons = explode(',',$mons);
 				foreach($exMons as $k1 => $monGroup) {
@@ -304,6 +307,7 @@ class Scheduler extends SugarBean {
 		}
 
 		// derive dates part
+        $dateName = array();
 		if($dates == '*') {
 			$GLOBALS['log']->debug('----->got * dates');
 		} elseif(strstr($dates, '*/')) {
@@ -350,6 +354,7 @@ class Scheduler extends SugarBean {
 		// derive hours part
 		//$currentHour = gmdate('G');
 		//$currentHour = date('G', strtotime('00:00'));
+        $hrName = array();
 		if($hrs == '*') {
 			$GLOBALS['log']->debug('----->got * hours');
 			for($i=0;$i<24; $i++) {
@@ -386,6 +391,7 @@ class Scheduler extends SugarBean {
 		//_pp($hrName);
 		// derive minutes
 		//$currentMin = date('i');
+        $minName = array();
 		$currentMin = $timedate->getNow()->minute;
 		if(substr($currentMin, 0, 1) == '0') {
 			$currentMin = substr($currentMin, 1, 1);
@@ -902,6 +908,30 @@ class Scheduler extends SugarBean {
         $sched13->modified_user_id   = '1';
         $sched13->catch_up           = '0';
         $sched13->save();
+
+        $sched14 = new Scheduler();
+        $sched14->name              = $mod_strings['LBL_OOTB_REMOVE_DOCUMENTS_FROM_FS'];
+        $sched14->job               = 'function::removeDocumentsFromFS';
+        $sched14->date_time_start   = create_date(2012, 1, 1) . ' ' . create_time(0, 0, 1);
+        $sched14->date_time_end     = create_date(2030, 12, 31) . ' ' . create_time(23, 59, 59);
+        $sched14->job_interval      = '0::3::1::*::*';
+        $sched14->status            = 'Active';
+        $sched14->created_by        = '1';
+        $sched14->modified_user_id  = '1';
+        $sched14->catch_up          = '0';
+        $sched14->save();
+
+        $sched15 = new Scheduler();
+        $sched15->name               = $mod_strings['LBL_OOTB_SUGARFEEDS'];
+        $sched15->job                = 'function::trimSugarFeeds';
+        $sched15->date_time_start    = create_date(2005,1,1) . ' ' . create_time(0,0,1);
+        $sched15->date_time_end      = create_date(2020,12,31) . ' ' . create_time(23,59,59);
+        $sched15->job_interval       = '0::2::1::*::*';
+        $sched15->status             = 'Active';
+        $sched15->created_by         = '1';
+        $sched15->modified_user_id   = '1';
+        $sched15->catch_up           = '1';
+        $sched15->save();
 	}
 
 	////	END SCHEDULER HELPER FUNCTIONS

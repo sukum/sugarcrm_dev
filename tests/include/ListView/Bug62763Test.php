@@ -1,5 +1,4 @@
 <?php
-if(!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
 /*********************************************************************************
  * SugarCRM Community Edition is a customer relationship management program developed by
  * SugarCRM, Inc. Copyright (C) 2004-2013 SugarCRM Inc.
@@ -36,41 +35,71 @@ if(!defined('sugarEntry') || !sugarEntry) die('Not A Valid Entry Point');
  ********************************************************************************/
 
 
-/*if($_SERVER['SERVER_ADDR'] != $_SERVER['REMOTE_ADDR']) { // make sure this script only gets executed locally
-	header('Location: index.php?action=Login&module=Users');
-	return;
-} else
-*/
-if(!empty($_REQUEST['job_id'])) {
-	
-	
-	$job_id = $_REQUEST['job_id'];
+require_once('include/ListView/ListViewData.php');
+require_once('include/SearchForm/SearchForm2.php');
 
-	if(empty($GLOBALS['log'])) { // setup logging
-		
-		$GLOBALS['log'] = LoggerManager::getLogger('SugarCRM'); 	
-	}
-	ob_implicit_flush();
-	ignore_user_abort(true);// keep processing if browser is closed
-	set_time_limit(0);// no time out
-	$GLOBALS['log']->debug('Job [ '.$job_id.' ] is about to FIRE. Updating Job status in DB');
-	$qLastRun = "UPDATE schedulers SET last_run = '".$runTime."' WHERE id = '".$job_id."'";
-	$this->db->query($qStatusUpdate);
-	$this->db->query($qLastRun);
-	
-	$job = new Job();
-	$job->runtime = TimeDate::getInstance()->nowDb();
-	if($job->startJob($job_id)) {
-		$GLOBALS['log']->info('----->Job [ '.$job_id.' ] was fired successfully');
-	} else {
-		$GLOBALS['log']->fatal('----->Job FAILURE job [ '.$job_id.' ] could not complete successfully.');
-	}
-	
-	$GLOBALS['log']->debug('Job [ '.$a['job'].' ] has been fired - dropped from schedulers_times queue and last_run updated');
-	$this->finishJob($job_id);
-	return true;
-} else {
-	$GLOBALS['log']->fatal('JOB FAILURE JobThread.php called with no job_id.  Suiciding this thread.');
-	die();
+/**
+ * Bug #62763
+ * Search breaks with multibyte characters
+ *
+ * @author avucinic@sugarcrm.com
+ * @ticked 62763
+ */
+class Bug62763Test extends Sugar_PHPUnit_Framework_TestCase
+{
+    public function setUp()
+    {
+        SugarTestHelper::setUp('beanFiles');
+        SugarTestHelper::setUp('beanList');
+        SugarTestHelper::setUp('current_user');
+    }
+
+    public function tearDown()
+    {
+        SugarTestHelper::tearDown();
+        $_REQUEST = array();
+    }
+
+    /**
+     * Check if ListViewData query is UTF-8 encoded
+     *
+     * @dataProvider dataProvider
+     * @group 62763
+     * @return void
+     */
+    public function testQueryEncoding($searchValue, $expected)
+    {
+        $_REQUEST = array (
+            'module' => 'Contacts',
+            'action' => 'index',
+            'searchFormTab' => 'basic_search',
+            'query' => 'true',
+            'name_basic' => $searchValue
+            );
+
+        $bean = BeanFactory::getBean('Accounts');
+        $listViewData = new ListViewData();
+
+        $result = $listViewData->getListViewData($bean, '');
+
+        $this->assertEquals($expected, $result['query']);
+    }
+
+    public static function dataProvider()
+    {
+        return array(
+            array(
+                'き ki, ひ hi, み mi, け ke, へ he, め me, こ ko, そ so, と to,',
+                'き ki, ひ hi, み mi, け ke, へ he, め me, こ ko, そ so, と to,',
+            ),
+            array(
+                '测试َि इषको कूटनतिक ल्कों म',
+                '测试َि इषको कूटनतिक ल्कों म',
+            ),
+            array(
+                '<b>bold & brave</b>',
+                '&lt;b&gt;bold &amp; brave&lt;/b&gt;',
+            )
+        );
+    }
 }
-?>
